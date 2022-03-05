@@ -18,6 +18,15 @@ func TestNewResponder(t *testing.T) {
 	}
 }
 
+func TestNewResponderEmpty(t *testing.T) {
+	r, err := NewResponder()
+	_ = r.Respond(&http.Response{StatusCode: 200})
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+}
+
 func TestNewResponderFor(t *testing.T) {
 	var ok bool
 	r, err := NewResponder(For(200, func(response Response) error {

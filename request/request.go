@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 )
 
 const (
@@ -16,14 +17,32 @@ const (
 
 // request carries all the data necessary to execute a request
 type request struct {
-	ctx      context.Context
-	method   httpMethod
+	// ctx context for the request
+	ctx context.Context
+	// method is the http GET, POST...
+	method httpMethod
+	// protocol is the protocol for the request
+	// Example:
+	// 		http
+	// 		https
 	protocol string
-	host     string
-	path     string
-	headers  map[string][]string
-	queries  map[string][]string
-	body     io.Reader
+	// host is the host of the request
+	// Example:
+	// 		my.host.com
+	host string
+	// path is the path for the request
+	// Example:
+	//		/my/path
+	//		/:myParam
+	path string
+	// params has the params to bind in the path
+	params map[string]string
+	// headers has the headers of the request
+	headers map[string][]string
+	// queries has the queries of the request
+	queries map[string][]string
+	// body has the body for the request
+	body io.Reader
 }
 
 // New creates a new request
@@ -34,6 +53,7 @@ func New(host string, options ...Option) (*http.Request, error) {
 		method:   MethodGet,
 		host:     host,
 		protocol: "http",
+		params:   make(map[string]string),
 		headers:  make(map[string][]string),
 		queries:  make(map[string][]string),
 	}
@@ -62,7 +82,12 @@ func build(r request) (*http.Request, error) {
 		}
 	}
 
-	url := fmt.Sprintf("%s://%s%s%s", r.protocol, r.host, r.path, q)
+	p := r.path
+	for k, v := range r.params {
+		p = strings.ReplaceAll(p, ":"+k, v)
+	}
+
+	url := fmt.Sprintf("%s://%s%s%s", r.protocol, r.host, p, q)
 
 	req := new(http.Request)
 	if r.ctx != nil {
@@ -114,6 +139,13 @@ func WithMethod(method httpMethod) Option {
 }
 
 // WithPath sets the path
+// To set path params, use :{value}
+// Example:
+// 			...
+// 			WithPath("/:userId/address/:addId")
+//			WithParam("userId", "123")
+//			WithParam("addId", "2")
+// 			...
 func WithPath(path string) Option {
 	return func(r *request) error {
 		r.path = path
@@ -121,7 +153,35 @@ func WithPath(path string) Option {
 	}
 }
 
+// WithParam adds a param bind
+func WithParam(key string, value interface{}) Option {
+	return func(r *request) error {
+		r.params[key] = fmt.Sprint(value)
+		return nil
+	}
+}
+
+// WithParams sets the params
+func WithParams(params map[string]interface{}) Option {
+	return func(r *request) error {
+		for k, v := range params {
+			r.params[k] = fmt.Sprint(v)
+		}
+		return nil
+	}
+}
+
 // WithHeader adds to the header a value
+// The header name will always be first letter Upper
+// Example:
+// 			...
+// 			WithHeader("authoRIZATION", "someHASH")
+// 			WithHeader("content-tyPE", "someContent")
+// 			...
+//     this will end up as a header:
+//			Authorization: someHASH
+//			Content-Type:  someContent
+
 func WithHeader(key string, value interface{}) Option {
 	return func(r *request) error {
 		if _, ok := r.headers[key]; ok {
@@ -194,6 +254,7 @@ func WithString(body string) Option {
 }
 
 // WithJson sets the body as a json
+// This method already sets the Content-Type header as application/json
 func WithJson(body interface{}) Option {
 	return func(r *request) error {
 		if b, err := json.Marshal(body); err != nil {
@@ -207,6 +268,7 @@ func WithJson(body interface{}) Option {
 }
 
 // WithXml sets the body as a xml
+// This method already sets the Content-Type header as application/xml
 func WithXml(body interface{}) Option {
 	return func(r *request) error {
 		if b, err := xml.Marshal(body); err != nil {

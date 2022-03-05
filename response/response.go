@@ -9,12 +9,15 @@ import (
 
 // Response holds data of the http response
 type Response struct {
+	// HttpResponse the original response
 	HttpResponse *http.Response
 }
 
 // Responder holds data about which function it should respond for reach http status
 type Responder struct {
-	responders   map[int]Func
+	// responders has the map for the status:func handler
+	responders map[int]Func
+	// defResponder has the default func handler
 	defResponder Func
 }
 
@@ -24,6 +27,7 @@ type Func func(Response) error
 // Respond handles how to proceed with a http.Response
 // I search in its configuration and calls the specific function for the http status
 // If not mapped, it will call a default responder function (if set)
+// And if in some point has an error, the method will return the error
 func (r *Responder) Respond(res *http.Response) error {
 	if res == nil {
 		return nil

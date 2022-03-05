@@ -227,6 +227,50 @@ func TestNewQuery(t *testing.T) {
 	}
 }
 
+func TestNewParam(t *testing.T) {
+	param := "user"
+	paramV := "userValue"
+	paramInt := "myQueryInt"
+	paramIntV := "myQueryIntValue"
+	r, err := New(host,
+		WithPath("/:"+param+"/:"+param+"/:"+paramInt),
+		WithParam(param, paramV),
+		WithParam(paramInt, paramIntV),
+	)
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+	expected := "/" + paramV + "/" + paramV + "/" + paramIntV
+	if !strings.Contains(r.URL.String(), expected) {
+		t.Errorf("final url does not has params: expected %s, result: %s", expected, r.URL.String())
+		t.FailNow()
+	}
+}
+
+func TestNewParams(t *testing.T) {
+	param := "user"
+	paramV := "userValue"
+	paramInt := "myQueryInt"
+	paramIntV := "myQueryIntValue"
+	r, err := New(host,
+		WithPath("/:"+param+"/:"+param+"/:"+paramInt),
+		WithParams(map[string]interface{}{
+			param:    paramV,
+			paramInt: paramIntV,
+		}),
+	)
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+	expected := "/" + paramV + "/" + paramV + "/" + paramIntV
+	if !strings.Contains(r.URL.String(), expected) {
+		t.Errorf("final url does not has params: expected %s, result: %s", expected, r.URL.String())
+		t.FailNow()
+	}
+}
+
 func TestNewBody(t *testing.T) {
 	body := "myBody"
 	buffer := bytes.NewBufferString(body)

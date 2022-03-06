@@ -2,6 +2,14 @@
 
 This lib is an easy and re-utilizable way to make http requests
 
+## Install
+
+To install just run:
+
+```ssh
+    go get github.com/ribGSilva/go-webconnector
+```
+
 ## Request
 
 To make requests, follow the example:

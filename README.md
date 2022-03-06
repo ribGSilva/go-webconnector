@@ -117,3 +117,7 @@ func execRequests() error {
 	return nil
 }
 ```
+
+Developer:
+Gabriel Ribeiro Silva
+https://www.linkedin.com/in/gabriel-ribeiro-silva/

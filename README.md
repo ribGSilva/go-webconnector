@@ -1,5 +1,7 @@
 # GO WebConnector
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/ribGSilva/go-webconnector.svg)](https://pkg.go.dev/github.com/ribGSilva/go-webconnector)
+
 This lib is an easy and re-utilizable way to make http requests
 
 ## Install

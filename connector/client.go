@@ -1,16 +1,23 @@
+// connector is a package to centralize the request configs
+// it can re-utilize the common configs of the requests
+
 package connector
 
 import (
-	"errors"
 	"github.com/ribGSilva/go-webconnector/request"
-	"github.com/ribGSilva/go-webconnector/response"
 	"net/http"
 )
 
 // WebClient is an interface that is able to performs http requests
 // the http.Client can be used there
 type WebClient interface {
-	Do(req *http.Request) (*http.Response, error)
+	Do(*http.Request) (*http.Response, error)
+}
+
+// Responder is an interface that is capable of handle a http.Response
+// made to be used with the response package
+type Responder interface {
+	Respond(*http.Response) error
 }
 
 // Connector contains data to perform the connections to a client
@@ -26,6 +33,72 @@ type Connector struct {
 }
 
 // New creates a new Connector
+// Example:
+// 		func execRequests() error {
+//			getAllPath := "/"
+//			getPath := "/:id"
+//			postPath := "/"
+//
+//			c, err := New("my.host.com",
+//				http.DefaultClient,
+//				WithGeneral(request.WithHeader("My-Header", "myHeaderKey")), // apply in all requests
+//				WithPath(getPath), // get
+//				WithPath(postPath, request.WithMethod(request.MethodPost)), // post
+//			)
+//			if err != nil {
+//				return err
+//			}
+//
+//			//get
+//			getBody := struct {
+//				Name string `json:"name"`
+//			}{}
+//			responder, err := response.NewResponder(response.ForJson(200, getBody))
+//			if err != nil {
+//				return err
+//			}
+//			err = c.DoBuild(getPath, &responder, request.WithParam("id", "123"))
+//			if err != nil {
+//				return err
+//			}
+//			fmt.Printf("%+v \n", getBody)
+//
+//			//post
+//			postBody := struct {
+//				Name string `json:"name"`
+//			}{Name: "my name"}
+//			responder, err = response.NewResponder(
+//				response.ForStatus(201),
+//				response.ForDefault(func(r response.Response) error {
+//					return errors.New("error creating")
+//				}),
+//			)
+//			if err != nil {
+//				return err
+//			}
+//			err = c.DoBuild(getPath, &responder, request.WithJson(postBody))
+//			if err != nil {
+//				return err
+//			}
+//			fmt.Println("created")
+//
+//			//get all
+//			getAll := make([]struct {
+//				Name string `json:"name"`
+//			}, 0)
+//
+//			responder, err = response.NewResponder(response.ForJson(200, getAll))
+//			if err != nil {
+//				return err
+//			}
+//			err = c.DoBuild(getAllPath, &responder, request.WithQuery("page", "3"))
+//			if err != nil {
+//				return err
+//			}
+//			fmt.Printf("%+v \n", getAll)
+//
+//			return nil
+//		}
 func New(host string, client WebClient, options ...Option) (Connector, error) {
 	c := Connector{
 		host:          host,
@@ -72,16 +145,18 @@ func WithPaths(po map[string][]request.Option) Option {
 
 // DoBuild builds the request accordingly to the options and executes it
 // the options are applied in the order: general -> pathDefaults -> custom
-func (c Connector) DoBuild(path string, responder response.Responder, options ...request.Option) error {
+func (c Connector) DoBuild(path string, responder Responder, options ...request.Option) error {
+
+	reqOptions := []request.Option{request.WithPath(path)}
+	reqOptions = append(reqOptions, c.generalOption...)
+
 	pathDefaultOption, ok := c.pathOptions[path]
-	if !ok {
-		return errors.New("connector: unmapped path '" + path + "'")
+	if ok {
+		reqOptions = append(reqOptions, pathDefaultOption...)
 	}
 
-	reqOptions := make([]request.Option, 0)
-	reqOptions = append(reqOptions, c.generalOption...)
-	reqOptions = append(reqOptions, pathDefaultOption...)
 	reqOptions = append(reqOptions, options...)
+
 	req, err := request.New(c.host, reqOptions...)
 	if err != nil {
 		return err
@@ -91,7 +166,7 @@ func (c Connector) DoBuild(path string, responder response.Responder, options ..
 }
 
 // Do should execute the request and triggers the responder
-func (c Connector) Do(request *http.Request, responder response.Responder) error {
+func (c Connector) Do(request *http.Request, responder Responder) error {
 	if res, err := c.webClient.Do(request); err != nil {
 		return err
 	} else {

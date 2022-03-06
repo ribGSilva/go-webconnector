@@ -1,3 +1,6 @@
+// response package brings facilities to handle responses og http.Response
+// it brings parsed responses, accordingly with the status
+
 package response
 
 import (
@@ -47,6 +50,25 @@ func (r *Responder) Respond(res *http.Response) error {
 }
 
 // NewResponder creates a new Responder
+// Example:
+// 		func handleResponse(resp *http.Response) error {
+//			response := struct {
+//				Name string `json:"name"`
+//			}{}
+//
+//			responder, err := NewResponder(
+//				ForStatus(404), // Does nothing
+//				ForJson(200, &response),
+//				ForDefault(func(response Response) error {
+//					return errors.New("response: not mapped status")
+//				}),
+//			)
+//			if err != nil {
+//				return err
+//			}
+//
+//			return responder.Respond(resp)
+//		}
 func NewResponder(options ...Option) (Responder, error) {
 	r := Responder{
 		responders:   make(map[int]Func),

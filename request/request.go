@@ -14,78 +14,90 @@ import (
 	"strings"
 )
 
-const (
-	headerContentType = "Content-Type"
-)
-
 // Builder carries all the data necessary to execute a http request
 type Builder struct {
-	// ctx context for the Builder
-	ctx context.Context
+	// Context for the Builder
+	Context context.Context
 	// method is the http GET, POST...
-	method httpMethod
-	// protocol is the protocol for the Builder
+	Method string
+	// Host is the host of the Builder
 	// Example:
-	// 		http
-	// 		https
-	protocol string
-	// host is the host of the Builder
-	// Example:
-	// 		my.host.com
-	host string
-	// path is the path for the Builder
+	// 		http://my.host.com
+	Host string
+	// Path is the path for the Builder
 	// Example:
 	//		/my/path
 	//		/:myParam
-	path string
-	// params has the params to bind in the path
-	params map[string]string
-	// headers has the headers of the Builder
-	headers map[string][]string
-	// queries has the queries of the Builder
-	queries map[string][]string
-	// body has the body for the Builder
-	body io.Reader
+	Path string
+	// Params has the params to bind in the path
+	Params map[string]string
+	// Headers has the headers of the Builder
+	Headers http.Header
+	// Queries has the queries of the Builder
+	Queries map[string][]string
+	// Encoder has the encoder for the Body
+	Encoder EncoderFunc
+	// Body has the body for the Builder
+	Body any
 }
 
-// New creates a new Builder
-// By default is a MethodGet Builder
-// By default the protocol is http
+//EncoderFunc encodes the Body
+type EncoderFunc func(any) ([]byte, error)
+
+// Option add optional values to the Builder
+type Option func(*Builder)
+
+// New creates a new *http.Request
 // Example:
 //		func buildReq(ctx context.Context, id string, body interface{}) {
-//			req, err := New("my.host.com",
-//				WithContext(ctx),
-//				WithMethod(MethodPatch), // by default is GET
-//				WithProtocol("https"), // by default is http
-//				WithPath("/path/:id"),
-//				WithParam("id", id),
-//				WithQuery("myQuery", "someValue"),
-//				WithHeader("Authorization", "myauth"),
-//				WithJson(body),
+//			req, err := New("http://my.host.com",
+//				Context(ctx),
+//				Method(MethodPatch), // by default is GET
+//				Path("/path/:id"),
+//				Param("id", id),
+//				Query("myQuery", "someValue"),
+//				Header("Authorization", "myauth"),
+//				JSON(body),
 //			)
 //		}
 func New(host string, options ...Option) (*http.Request, error) {
-	r := Builder{
-		method:   MethodGet,
-		host:     host,
-		protocol: "http",
-		params:   make(map[string]string),
-		headers:  make(map[string][]string),
-		queries:  make(map[string][]string),
-	}
-	for _, o := range options {
-		if err := o(&r); err != nil {
-			return nil, err
-		}
-	}
-
-	return build(r)
+	return NewBuilder(host, options...).Build()
 }
 
-func build(r Builder) (*http.Request, error) {
+// NewBuilder a new Builder
+// Example:
+//		func reqBuilder(ctx context.Context, id string, body interface{}) {
+//			builder := NewBuilder("http://my.host.com",
+//				Context(ctx),
+//				Method(MethodPatch), // by default is GET
+//				Path("/path/:id"),
+//				Param("id", id),
+//				Query("myQuery", "someValue"),
+//				Header("Authorization", "myauth"),
+//				Body(body),
+//			)
+//		}
+func NewBuilder(host string, options ...Option) *Builder {
+	r := Builder{
+		Context: context.Background(),
+		Method:  http.MethodGet,
+		Host:    host,
+		Params:  make(map[string]string),
+		Headers: make(http.Header),
+		Queries: make(map[string][]string),
+		Encoder: json.Marshal,
+	}
+	for _, o := range options {
+		o(&r)
+	}
+
+	return &r
+}
+
+func (r *Builder) Build() (*http.Request, error) {
 	q := ""
 
-	for k, v := range r.queries {
+	for k, v := range r.Queries {
 
 		for _, qv := range v {
 			if len(q) == 0 {
@@ -98,96 +110,77 @@ func build(r Builder) (*http.Request, error) {
 		}
 	}
 
-	p := r.path
-	for k, v := range r.params {
+	p := r.Path
+	for k, v := range r.Params {
 		p = strings.ReplaceAll(p, ":"+k, v)
 	}
 
-	url := fmt.Sprintf("%s://%s%s%s", r.protocol, r.host, p, q)
+	url := fmt.Sprintf("%s%s%s", r.Host, p, q)
 
-	req := new(http.Request)
-	if r.ctx != nil {
-		var err error
-		if req, err = http.NewRequestWithContext(r.ctx, string(r.method), url, r.body); err != nil {
+	var body io.Reader
+	if r.Body != nil {
+		b, err := r.Encoder(r.Body)
+		if err != nil {
 			return nil, err
 		}
-	} else {
-		var err error
-		if req, err = http.NewRequest(string(r.method), url, r.body); err != nil {
-			return nil, err
-		}
+		body = bytes.NewBuffer(b)
 	}
 
-	for k, v := range r.headers {
-		for _, hv := range v {
-			req.Header.Add(k, hv)
-		}
+	req, err := http.NewRequestWithContext(r.Context, r.Method, url, body)
+	if err != nil {
+		return nil, err
 	}
+
+	req.Header = r.Headers
 
 	return req, nil
 }
 
-// Option add optional values to the Builder
-type Option func(*Builder) error
-
-// WithContext specify the context for the Builder
-func WithContext(ctx context.Context) Option {
-	return func(r *Builder) error {
-		r.ctx = ctx
-		return nil
+// Context specify the context for the Builder
+func Context(ctx context.Context) Option {
+	return func(r *Builder) {
+		r.Context = ctx
 	}
 }
 
-// WithProtocol specify the protocol for the Builder
-func WithProtocol(protocol string) Option {
-	return func(r *Builder) error {
-		r.protocol = protocol
-		return nil
+// Method specify the http method for the Builder
+func Method(method string) Option {
+	return func(r *Builder) {
+		r.Method = method
 	}
 }
 
-// WithMethod specify the http method for the Builder
-func WithMethod(method httpMethod) Option {
-	return func(r *Builder) error {
-		r.method = method
-		return nil
-	}
-}
-
-// WithPath sets the path
+// Path sets the path
 // To set path params, use :{value}
 // Example:
 // 			...
-// 			WithPath("/:userId/address/:addId")
-//			WithParam("userId", "123")
-//			WithParam("addId", "2")
+// 			Path("/:userId/address/:addId")
+//			Param("userId", "123")
+//			Param("addId", "2")
 // 			...
-func WithPath(path string) Option {
-	return func(r *Builder) error {
-		r.path = path
-		return nil
+func Path(path string) Option {
+	return func(r *Builder) {
+		r.Path = path
 	}
 }
 
-// WithParam adds a param bind
-func WithParam(key string, value interface{}) Option {
-	return func(r *Builder) error {
-		r.params[key] = fmt.Sprint(value)
-		return nil
+// Param adds a param bind
+func Param(key string, value interface{}) Option {
+	return func(r *Builder) {
+		r.Params[key] = fmt.Sprint(value)
 	}
 }
 
-// WithParams sets the params
-func WithParams(params map[string]interface{}) Option {
-	return func(r *Builder) error {
+// Params sets the params
+func Params(params map[string]interface{}) Option {
+	return func(r *Builder) {
 		for k, v := range params {
-			r.params[k] = fmt.Sprint(v)
+			r.Params[k] = fmt.Sprint(v)
 		}
-		return nil
 	}
 }
 
-// WithHeader adds to the header a value
+// Header adds to the header a value
 // The header name will always be first letter Upper
 // Example:
 // 			...
@@ -198,101 +191,85 @@ func WithParams(params map[string]interface{}) Option {
 //			Authorization: someHASH
 //			Content-Type:  someContent
 
-func WithHeader(key string, value interface{}) Option {
-	return func(r *Builder) error {
-		if _, ok := r.headers[key]; ok {
-			r.headers[key] = append(r.headers[key], fmt.Sprint(value))
+func Header(key string, value interface{}) Option {
+	return func(r *Builder) {
+		r.Headers.Add(key, fmt.Sprint(value))
+	}
+}
+
+// Headers sets the headers
+func Headers(headers http.Header) Option {
+	return func(r *Builder) {
+		r.Headers = headers
+	}
+}
+
+// Query adds query param to the Builder
+func Query(key string, value interface{}) Option {
+	return func(r *Builder) {
+		if _, ok := r.Queries[key]; ok {
+			r.Queries[key] = append(r.Queries[key], fmt.Sprint(value))
 		} else {
-			r.headers[key] = []string{fmt.Sprint(value)}
+			r.Queries[key] = []string{fmt.Sprint(value)}
 		}
-		return nil
 	}
 }
 
-// WithHeaders sets the headers
-func WithHeaders(headers map[string][]interface{}) Option {
-	return func(r *Builder) error {
-		for k, v := range headers {
-			for _, hv := range v {
-				if _, ok := r.headers[k]; ok {
-					r.headers[k] = append(r.headers[k], fmt.Sprint(hv))
-				} else {
-					r.headers[k] = []string{fmt.Sprint(hv)}
-				}
-			}
-		}
-		return nil
-	}
-}
-
-// WithQuery adds query param to the Builder
-func WithQuery(key string, value interface{}) Option {
-	return func(r *Builder) error {
-		if _, ok := r.queries[key]; ok {
-			r.queries[key] = append(r.queries[key], fmt.Sprint(value))
-		} else {
-			r.queries[key] = []string{fmt.Sprint(value)}
-		}
-		return nil
-	}
-}
-
-// WithQueries sets the query params
-func WithQueries(queries map[string][]interface{}) Option {
-	return func(r *Builder) error {
+// Queries sets the query params
+func Queries(queries map[string][]interface{}) Option {
+	return func(r *Builder) {
 		for k, v := range queries {
 			for _, qv := range v {
-				if _, ok := r.queries[k]; ok {
-					r.queries[k] = append(r.queries[k], fmt.Sprint(qv))
+				if _, ok := r.Queries[k]; ok {
+					r.Queries[k] = append(r.Queries[k], fmt.Sprint(qv))
 				} else {
-					r.queries[k] = []string{fmt.Sprint(qv)}
+					r.Queries[k] = []string{fmt.Sprint(qv)}
 				}
 			}
 		}
-		return nil
 	}
 }
 
-// WithBody sets the body
-func WithBody(body io.Reader) Option {
-	return func(r *Builder) error {
-		r.body = body
-		return nil
+// Encoder sets the encoder
+func Encoder(f EncoderFunc) Option {
+	return func(r *Builder) {
+		r.Encoder = f
 	}
 }
 
-// WithString sets the body as a string
-func WithString(body string) Option {
-	return func(r *Builder) error {
-		r.body = bytes.NewBufferString(body)
-		return nil
+// Body sets the body
+func Body(body any) Option {
+	return func(r *Builder) {
+		r.Body = body
 	}
 }
 
-// WithJson sets the body as a json
+// String sets the body as a string
+func String(body string) Option {
+	return func(r *Builder) {
+		r.Body = bytes.NewBufferString(body)
+		r.Encoder = func(any) ([]byte, error) {
+			return []byte(body), nil
+		}
+	}
+}
+
+// JSON sets the body as a json
 // This method already sets the Content-Type header as application/json
-func WithJson(body interface{}) Option {
-	return func(r *Builder) error {
-		if b, err := json.Marshal(body); err != nil {
-			return err
-		} else {
-			r.headers[headerContentType] = []string{"application/json"}
-			r.body = bytes.NewBuffer(b)
-		}
-		return nil
+func JSON(body interface{}) Option {
+	return func(r *Builder) {
+		r.Body = body
+		r.Encoder = json.Marshal
+		r.Headers.Add("Content-Type", "application/json")
 	}
 }
 
-// WithXml sets the body as a xml
+// XML sets the body as a xml
 // This method already sets the Content-Type header as application/xml
-func WithXml(body interface{}) Option {
-	return func(r *Builder) error {
-		if b, err := xml.Marshal(body); err != nil {
-			return err
-		} else {
-			r.headers[headerContentType] = []string{"application/xml"}
-			r.body = bytes.NewBuffer(b)
-		}
-		return nil
+func XML(body interface{}) Option {
+	return func(r *Builder) {
+		r.Body = body
+		r.Encoder = xml.Marshal
+		r.Headers.Add("Content-Type", "application/xml")
 	}
 }

@@ -1,3 +1,3 @@
 module github.com/ribGSilva/go-webconnector
 
-go 1.17
+go 1.18

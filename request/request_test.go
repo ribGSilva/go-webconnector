@@ -1,16 +1,16 @@
 package request
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"encoding/xml"
 	"io/ioutil"
+	"net/http"
 	"strings"
 	"testing"
 )
 
-const host = "defaultHost"
+const host = "http://defaultHost"
 
 func TestNew(t *testing.T) {
 	r, err := New(host)
@@ -18,9 +18,8 @@ func TestNew(t *testing.T) {
 		t.Error(err)
 		t.FailNow()
 	}
-	expectedUrl := "http://" + host
-	if r.URL.String() != expectedUrl {
-		t.Errorf("final url does not match: expected %s, result: %s", expectedUrl, r.URL.String())
+	if r.URL.String() != host {
+		t.Errorf("final url does not match: expected %s, result: %s", host, r.URL.String())
 		t.FailNow()
 	}
 	expectedLen := 0
@@ -28,7 +27,7 @@ func TestNew(t *testing.T) {
 		t.Errorf("final headers len does not match: expected %d, result: %d", expectedLen, len(r.Header))
 		t.FailNow()
 	}
-	expectedMethod := string(MethodGet)
+	expectedMethod := http.MethodGet
 	if r.Method != expectedMethod {
 		t.Errorf("final method does not match: expected %s, result: %s", expectedMethod, r.Method)
 		t.FailNow()
@@ -36,40 +35,25 @@ func TestNew(t *testing.T) {
 }
 
 func TestNewMethod(t *testing.T) {
-	r, err := New(host, WithMethod(MethodPost))
+	r, err := New(host, Method(http.MethodPost))
 	if err != nil {
 		t.Error(err)
 		t.FailNow()
 	}
-	expectedMethod := string(MethodPost)
-	if r.Method != expectedMethod {
-		t.Errorf("final method does not match: expected %s, result: %s", expectedMethod, r.Method)
+	if r.Method != http.MethodPost {
+		t.Errorf("final method does not match: expected %s, result: %s", http.MethodPost, r.Method)
 		t.FailNow()
 	}
 }
 
 func TestNewPath(t *testing.T) {
 	path := "/newpath"
-	r, err := New(host, WithPath(path))
+	r, err := New(host, Path(path))
 	if err != nil {
 		t.Error(err)
 		t.FailNow()
 	}
-	expectedUrl := "http://" + host + path
-	if r.URL.String() != expectedUrl {
-		t.Errorf("final url does not match: expected %s, result: %s", expectedUrl, r.URL.String())
-		t.FailNow()
-	}
-}
-
-func TestNewProtocol(t *testing.T) {
-	protocol := "https"
-	r, err := New(host, WithProtocol(protocol))
-	if err != nil {
-		t.Error(err)
-		t.FailNow()
-	}
-	expectedUrl := protocol + "://" + host
+	expectedUrl := host + path
 	if r.URL.String() != expectedUrl {
 		t.Errorf("final url does not match: expected %s, result: %s", expectedUrl, r.URL.String())
 		t.FailNow()
@@ -78,7 +62,7 @@ func TestNewProtocol(t *testing.T) {
 
 func TestNewCtx(t *testing.T) {
 	ctx := context.Background()
-	r, err := New(host, WithContext(ctx))
+	r, err := New(host, Context(ctx))
 	if err != nil {
 		t.Error(err)
 		t.FailNow()
@@ -95,7 +79,7 @@ func TestNewHeaders(t *testing.T) {
 	headerV2 := "myHeaderValue2"
 	headerInt := "Myheaderint"
 	headerIntV := "myHeaderIntValue"
-	r, err := New(host, WithHeaders(map[string][]interface{}{
+	r, err := New(host, Headers(http.Header{
 		header:    {headerV, headerV2},
 		headerInt: {headerIntV},
 	}))
@@ -132,9 +116,9 @@ func TestNewHeader(t *testing.T) {
 	headerInt := "Myheaderint"
 	headerIntV := "myHeaderIntValue"
 	r, err := New(host,
-		WithHeader(header, headerV),
-		WithHeader(header, headerV2),
-		WithHeader(headerInt, headerIntV),
+		Header(header, headerV),
+		Header(header, headerV2),
+		Header(headerInt, headerIntV),
 	)
 	if err != nil {
 		t.Error(err)
@@ -169,7 +153,7 @@ func TestNewQueries(t *testing.T) {
 	queryInt := "myQueryInt"
 	queryIntV := "myQueryIntValue"
 	r, err := New(host,
-		WithQueries(map[string][]interface{}{
+		Queries(map[string][]interface{}{
 			query:    {queryV, queryV2},
 			queryInt: {queryIntV},
 		}),
@@ -202,9 +186,9 @@ func TestNewQuery(t *testing.T) {
 	queryInt := "myQueryInt"
 	queryIntV := "myQueryIntValue"
 	r, err := New(host,
-		WithQuery(query, queryV),
-		WithQuery(query, queryV2),
-		WithQuery(queryInt, queryIntV),
+		Query(query, queryV),
+		Query(query, queryV2),
+		Query(queryInt, queryIntV),
 	)
 	if err != nil {
 		t.Error(err)
@@ -233,9 +217,9 @@ func TestNewParam(t *testing.T) {
 	paramInt := "myQueryInt"
 	paramIntV := "myQueryIntValue"
 	r, err := New(host,
-		WithPath("/:"+param+"/:"+param+"/:"+paramInt),
-		WithParam(param, paramV),
-		WithParam(paramInt, paramIntV),
+		Path("/:"+param+"/:"+param+"/:"+paramInt),
+		Param(param, paramV),
+		Param(paramInt, paramIntV),
 	)
 	if err != nil {
 		t.Error(err)
@@ -254,8 +238,8 @@ func TestNewParams(t *testing.T) {
 	paramInt := "myQueryInt"
 	paramIntV := "myQueryIntValue"
 	r, err := New(host,
-		WithPath("/:"+param+"/:"+param+"/:"+paramInt),
-		WithParams(map[string]interface{}{
+		Path("/:"+param+"/:"+param+"/:"+paramInt),
+		Params(map[string]interface{}{
 			param:    paramV,
 			paramInt: paramIntV,
 		}),
@@ -273,9 +257,11 @@ func TestNewParams(t *testing.T) {
 
 func TestNewBody(t *testing.T) {
 	body := "myBody"
-	buffer := bytes.NewBufferString(body)
 	r, err := New(host,
-		WithBody(buffer),
+		Body(body),
+		Encoder(func(any) ([]byte, error) {
+			return []byte(body), nil
+		}),
 	)
 	if err != nil {
 		t.Error(err)
@@ -295,7 +281,7 @@ func TestNewBody(t *testing.T) {
 func TestNewString(t *testing.T) {
 	body := "myBody"
 	r, err := New(host,
-		WithString(body),
+		String(body),
 	)
 	if err != nil {
 		t.Error(err)
@@ -318,7 +304,7 @@ func TestNewJson(t *testing.T) {
 	}{Field: "myField"}
 
 	r, err := New(host,
-		WithJson(body),
+		JSON(body),
 	)
 	if err != nil {
 		t.Error(err)
@@ -337,8 +323,8 @@ func TestNewJson(t *testing.T) {
 		t.FailNow()
 	}
 
-	if r.Header[headerContentType][0] != "application/json" {
-		t.Errorf("final header does not match: expected %s, result: %s", "application/json", r.Header[headerContentType][0])
+	if r.Header.Get("Content-Type") != "application/json" {
+		t.Errorf("final header does not match: expected %s, result: %s", "application/json", r.Header.Get("Content-Type"))
 		t.FailNow()
 	}
 }
@@ -350,7 +336,7 @@ func TestNewXml(t *testing.T) {
 	}{Field: "myField"}
 
 	r, err := New(host,
-		WithXml(body),
+		XML(body),
 	)
 	if err != nil {
 		t.Error(err)
@@ -369,15 +355,15 @@ func TestNewXml(t *testing.T) {
 		t.FailNow()
 	}
 
-	if r.Header[headerContentType][0] != "application/xml" {
-		t.Errorf("final header does not match: expected %s, result: %s", "application/xml", r.Header[headerContentType][0])
+	if r.Header.Get("Content-Type") != "application/xml" {
+		t.Errorf("final header does not match: expected %s, result: %s", "application/xml", r.Header.Get("Content-Type"))
 		t.FailNow()
 	}
 }
 
 func TestNewJsonError(t *testing.T) {
 	_, err := New(host,
-		WithJson(make(chan int, 1)),
+		JSON(make(chan int, 1)),
 	)
 
 	if err == nil {
@@ -392,7 +378,7 @@ func TestNewXmlError(t *testing.T) {
 	}{Field: "myField"}
 
 	_, err := New(host,
-		WithXml(body),
+		XML(body),
 	)
 
 	if err == nil {
@@ -402,21 +388,7 @@ func TestNewXmlError(t *testing.T) {
 }
 
 func TestNewRequestError(t *testing.T) {
-	_, err := New("",
-		WithProtocol(""),
-	)
-
-	if err == nil {
-		t.Error("it supposed to return an error")
-		t.FailNow()
-	}
-}
-
-func TestNewRequestCtxError(t *testing.T) {
-	_, err := New("",
-		WithContext(context.Background()),
-		WithProtocol(""),
-	)
+	_, err := New("", Context(nil))
 
 	if err == nil {
 		t.Error("it supposed to return an error")

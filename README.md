@@ -19,14 +19,14 @@ To make requests, follow the example:
 ```go
 func buildReq(ctx context.Context, id string, body interface{}) {
     req := rq.New("my.host.com",
-	    rq.Context(ctx),
+        rq.Context(ctx),
         rq.Method(MethodPatch), // by default is GET
         rq.Protocol("https"), // by default is http
         rq.Path("/path/:id"),
         rq.Param("id", id),
         rq.Query("myQuery", "someValue"),
         rq.Header("Authorization", "myauth"),
-        rq.Json(body),
+        rq.JSON(body),
     )
 }
 ```
@@ -37,23 +37,19 @@ To handle response, follow the example:
 
 ```go
 func handleResponse(resp *http.Response) error {
-	response := struct {
-		Name string `json:"name"`
-	}{}
-
 	responder := rp.New(
-	    rp.Status(http.StatusNotFound), // Does nothing
-        rp.For(http.StatusOK, func(body io.ReadCloser) (any, error) {
-            var b myStruct
-            err := json.NewDecoder(body).Decode(&b)
-            if err != nil {
-                return nil, err
-            }
-            return b, nil
-        }),
-        rp.Default(func(responder io.ReadCloser) (any, error) {
-            return nil, errors.New("responder: not mapped status")
-        }),
+            rp.Status(http.StatusNotFound), // Does nothing
+            rp.For(http.StatusOK, func(body io.ReadCloser) (any, error) {
+                var b myStruct
+                err := json.NewDecoder(body).Decode(&b)
+                if err != nil {
+                    return nil, err
+                }
+                return &b, nil
+            }),
+            rp.Default(func(responder io.ReadCloser) (any, error) {
+                return nil, errors.New("responder: not mapped status")
+            }),
 	)
 
 	return responder.Respond(resp)
